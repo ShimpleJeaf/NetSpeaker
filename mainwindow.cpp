@@ -10,6 +10,42 @@
 #include <QAudioSink>
 #include <limits>
 
+S::S(QString addr, unsigned short port, QObject* parent)
+    : QObject(parent)
+    , m_addr(addr)
+    , m_port(port)
+{
+    m_udpSocket.setSocketOption(QAbstractSocket::MulticastTtlOption, 1);
+    if (m_udpSocket.bind(QHostAddress::AnyIPv4, m_port, QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint))
+    // if (m_udpSocket.bind(QHostAddress("192.168.137.1"), m_port, QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint))
+    {
+        if (!m_udpSocket.joinMulticastGroup(m_addr))
+            qDebug() << "加入组播失败";
+    }
+    else
+        qDebug() << "ip绑定失败";
+    if (!connect(&m_udpSocket, &QUdpSocket::readyRead, [=](){
+            while (m_udpSocket.hasPendingDatagrams())
+            {
+                QNetworkDatagram data = m_udpSocket.receiveDatagram();
+                emit readReady(&data);
+            }
+        }))
+        qDebug() << "接收数据信号槽绑定失败";
+    m_udpSocket.open(QIODevice::ReadWrite);
+}
+
+S::~S()
+{
+    m_udpSocket.leaveMulticastGroup(m_addr);
+    m_udpSocket.close();
+}
+
+void S::send(const char *data, size_t len)
+{
+    m_udpSocket.writeDatagram(data, len, m_addr, m_port);
+}
+
 int callback(const unsigned char *data, size_t dataSize, void *master)
 {
     S* s = reinterpret_cast<S*>(master);
@@ -103,7 +139,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (ui->type->currentIndex() == 0)
             return;
 
-        // 数据转换
+        // 数据转换，原始数据是INT32
         auto srcData = /*qUncompress*/(data->data());
         // qDebug() << srcData.data();
         auto pSrc = reinterpret_cast<int*>(srcData.data());

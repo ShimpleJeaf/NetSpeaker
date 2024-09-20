@@ -2,32 +2,7 @@
 #define ANYCAPTURE_H
 
 #include "captureglobal.h"
-
-#include <QUdpSocket>
-#include <QVariant>
-#include <QNetworkDatagram>
-
-class S : public QObject
-{
-    Q_OBJECT
-public:
-    S(QString addr = "239.0.0.1", unsigned short port = 13712, QObject* parent = nullptr);
-    ~S();
-
-    void send(const char* data, size_t len);
-
-signals:
-    void ready(char* pData, size_t len);
-    void data(float);
-
-    void readReady(QNetworkDatagram* data);
-
-private:
-    QUdpSocket m_udpSocket;
-    QHostAddress m_addr;
-    unsigned short m_port;
-};
-
+#include <QObject>
 
 QT_FORWARD_DECLARE_CLASS(AnyCapturePrivate);
 
