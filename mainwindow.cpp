@@ -8,25 +8,12 @@
 #include <QMediaDevices>
 #include <QAudioDevice>
 #include <QAudioSink>
+#include <limits>
 
 int callback(const unsigned char *data, size_t dataSize, void *master)
 {
-    // std::lock_guard<std::mutex> lk(g_m);
-    // std::memcpy(g_buffer, data, dataSize);
     S* s = reinterpret_cast<S*>(master);
-    // emit s->ready(g_buffer, dataSize);
-
     s->send(reinterpret_cast<const char*>(data), dataSize);
-
-    // auto pF = reinterpret_cast<const float*>(data);
-    // size_t flen = dataSize / 4;
-    // auto pV = new Data(flen);
-    // for (int i = 0; i < flen; i++, pF++)
-    // {
-    //     (*pV)[i] = *pF;
-    // }
-    // std::lock_guard<std::mutex> lk(g_m);
-    // g_queue.push(pV);
     return 0;
 }
 
@@ -66,9 +53,6 @@ MainWindow::MainWindow(QWidget *parent)
     m_chart->addAxis(m_axisY, Qt::AlignLeft);
     m_series->attachAxis(m_axisY);
 
-    // connect(m_timer, &QTimer::timeout, this, &MainWindow::onTimer);
-    // m_timer->start(100);
-
     connect(ui->pushButton, &QPushButton::clicked, [=](){
         m_startFlag = !m_startFlag;
         if (m_startFlag)
@@ -84,7 +68,8 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(ui->type, &QComboBox::currentIndexChanged, [=](int index){
         if (index == 0)
-            stop();
+            ;
+            // stop();
         if (index == 1)
         {
             m_capture->stopCaptureAudioOutput();
@@ -101,23 +86,56 @@ MainWindow::MainWindow(QWidget *parent)
     //设定高低位,LittleEndian（低位优先）,LargeEndian(高位优先)
     // m_format.setByteOrder(QPixelFormat::LittleEndian);
     m_format.setSampleFormat(QAudioFormat::Float);
+    m_format.setChannelConfig(QAudioFormat::ChannelConfigStereo);
 
     auto dev(QMediaDevices::defaultAudioOutput());
+    // m_format = dev.preferredFormat();
     if (dev.isFormatSupported(m_format))
     {
         m_audioSink = new QAudioSink(dev, m_format, this);
-        m_audioSink->setBufferSize(10240000);
+        m_audioSink->setBufferSize(102400);
         m_output = m_audioSink->start();
         qDebug() << "audio状态：" << m_audioSink->state();
     }
     else
         qDebug() << "输出音频格式不支持";
     connect(m_s, &S::readReady, [&](QNetworkDatagram* data){
-        if (m_audioSink->state() == QAudio::IdleState)
+        if (ui->type->currentIndex() == 0)
+            return;
+
+        // 数据转换
+        auto srcData = /*qUncompress*/(data->data());
+        // qDebug() << srcData.data();
+        auto pSrc = reinterpret_cast<int*>(srcData.data());
+        // 转换成float
+        QByteArray dstData(srcData.size(), 0);
+        auto pDst = reinterpret_cast<float*>(dstData.data());
+        for (int i = 0; i < srcData.size()/4; i++, pSrc++, pDst++)
         {
-            m_output->write(data->data());
-            qDebug() << m_audioSink->error();
-            qDebug() << "收到并写入数据";
+            *pDst = static_cast<float>(*pSrc) / INT_MAX;
+        }
+        m_queue.push_back(dstData);
+        if (m_queue.size() > 50)
+        {
+            m_queue.pop_front();
+            qDebug() << "队列超过50，丢弃数据";
+        }
+
+        if (m_audioSink->state() == QAudio::IdleState
+            && !m_queue.empty())
+        {
+            QByteArray d;
+            while (!m_queue.empty() /*&& d.size() < 90000*/)
+            {
+                d.append(m_queue.front());
+                m_queue.pop_front();
+            }
+            qDebug() << d.size();
+            m_output->write(d);
+
+            // m_output->write(m_queue.front());
+            // m_queue.pop_front();
+            // qDebug() << "收到并写入数据";
         }
     });
 }
@@ -128,56 +146,4 @@ MainWindow::~MainWindow()
     delete m_chart;
     delete m_capture;
     delete m_s;
-}
-
-void MainWindow::setData(char *pData, size_t len)
-{
-    std::lock_guard<std::mutex> lk(g_m);
-    float* pF = reinterpret_cast<float*>(pData);
-    size_t flen = len / 4;
-    for (size_t i = 0; i < flen; i++, pF++)
-    {
-        m_series->append(i, *pF);
-    }
-}
-
-void MainWindow::setFloat(float data)
-{
-    static int i = 0;
-    // m_series->append(i, data);
-    i = (i+1) % 48000;
-}
-
-void MainWindow::onTimer()
-{
-    Data* pD;
-    std::unique_lock<std::mutex> lk(g_m);
-    if (g_queue.empty())
-        return;
-    pD = g_queue.front();
-    g_queue.pop();
-    lk.unlock();
-
-    int i = 0;
-    static QList<QPointF> data;
-    data.clear();
-    for (int j = 0; j < pD->size(); j+=1)
-    // for (auto& d : *pD)
-    {
-        data.push_back(QPointF(i++, (*pD)[j]));
-        i++;
-    }
-    m_series->replace(data);
-    m_chart->show();
-    delete pD;
-}
-
-void MainWindow::play()
-{
-
-}
-
-void MainWindow::stop()
-{
-
 }

@@ -4,6 +4,8 @@
 #include <QMainWindow>
 #include <QAudioFormat>
 #include "anycapture.h"
+#include <QQueue>
+#include <QByteArray>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -28,17 +30,6 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
-public slots:
-    void setData(char* pData, size_t len);
-    void setFloat(float data);
-    void onTimer();
-
-private:
-    // 接收并播放
-    void play();
-    // 停止播放
-    void stop();
-
 private:
     Ui::MainWindow *ui;
     QChart* m_chart;
@@ -53,5 +44,6 @@ private:
     QAudioFormat m_format;
     QIODevice* m_output;
     QAudioSink* m_audioSink;
+    QQueue<QByteArray> m_queue;
 };
 #endif // MAINWINDOW_H
