@@ -125,12 +125,12 @@ MainWindow::MainWindow(QWidget *parent)
             && !m_queue.empty())
         {
             QByteArray d;
+            // qDebug() << "queue size: " << m_queue.size(); // 大概会累计到27
             while (!m_queue.empty() /*&& d.size() < 90000*/)
             {
                 d.append(m_queue.front());
                 m_queue.pop_front();
             }
-            qDebug() << d.size();
             m_output->write(d);
 
             // m_output->write(m_queue.front());
